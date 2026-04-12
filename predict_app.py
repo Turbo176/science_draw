@@ -2,15 +2,16 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
-matplotlib.use('Agg')  # 无 GUI 后端，确保云端稳定运行
+matplotlib.use('Agg')
 import pandas as pd
+from scipy.integrate import odeint
 
 # ==========================================
 # 页面配置
 # ==========================================
 st.set_page_config(page_title="温度变化预测工具", layout="centered")
-st.title("冷热水混合温度变化预测")
-st.markdown("根据热平衡原理和指数衰减模型，预测不同初始温度的冷热水接触后的温度变化曲线。")
+st.title("冷热水温度变化预测")
+st.markdown("模拟热水与冷水接触后，两者相互传热并与环境交换热量，最终都趋向室温。")
 
 # ==========================================
 # 侧边栏：用户输入
@@ -19,74 +20,86 @@ st.sidebar.header("初始条件设置")
 
 hot_init = st.sidebar.number_input("热水初始温度 (℃)", value=60.0, step=1.0, format="%.1f")
 cold_init = st.sidebar.number_input("冷水初始温度 (℃)", value=20.0, step=1.0, format="%.1f")
+room_temp = st.sidebar.number_input("室温 (℃)", value=25.0, step=1.0, format="%.1f")
 
-# 假设质量相等，计算平衡温度
-equilibrium_temp = (hot_init + cold_init) / 2
-st.sidebar.markdown(f"预测平衡温度：{equilibrium_temp:.1f} ℃**")
-
-# 时间常数 k (衰减速率) 可调节
-k = st.sidebar.slider("温度变化速率 (k)", min_value=0.1, max_value=1.0, value=0.4, step=0.05,
-                      help="值越大，温度变化越快（热交换越剧烈）。可根据实验数据调整。")
+# 热交换系数
+k_hc = st.sidebar.slider("热水-冷水热交换系数", min_value=0.0, max_value=1.0, value=0.4, step=0.05,
+                         help="热水与冷水之间的传热速率，值越大热量交换越快")
+k_h_env = st.sidebar.slider("热水-环境热交换系数", min_value=0.0, max_value=0.5, value=0.1, step=0.02,
+                            help="热水向环境散热的速率")
+k_c_env = st.sidebar.slider("冷水-环境热交换系数", min_value=0.0, max_value=0.5, value=0.1, step=0.02,
+                            help="冷水向环境散热的速率")
 
 # 预测时长（分钟）
-time_max = st.sidebar.slider("预测时长 (分钟)", min_value=5, max_value=30, value=10, step=1)
+time_max = st.sidebar.slider("预测时长 (分钟)", min_value=5, max_value=60, value=20, step=1)
 
 # ==========================================
-# 核心预测函数
+# 微分方程模型
 # ==========================================
-def predict_temperatures(hot0, cold0, t_eq, k, t_max, num_points=100):
-    t = np.linspace(0, t_max, num_points)
-    hot_t = t_eq + (hot0 - t_eq) * np.exp(-k * t)
-    cold_t = t_eq + (cold0 - t_eq) * np.exp(-k * t)
-    return t, hot_t, cold_t
+def heat_exchange(y, t, k_hc, k_h_env, k_c_env, room):
+    T_h, T_c = y
+    dT_h_dt = -k_hc * (T_h - T_c) - k_h_env * (T_h - room)
+    dT_c_dt =  k_hc * (T_h - T_c) - k_c_env * (T_c - room)
+    return [dT_h_dt, dT_c_dt]
 
 # ==========================================
-# 生成预测曲线
+# 数值求解
 # ==========================================
-t, hot_pred, cold_pred = predict_temperatures(hot_init, cold_init, equilibrium_temp, k, time_max)
+t = np.linspace(0, time_max, 200)
+y0 = [hot_init, cold_init]
+args = (k_hc, k_h_env, k_c_env, room_temp)
+solution = odeint(heat_exchange, y0, t, args=args)
+hot_vals, cold_vals = solution[:, 0], solution[:, 1]
 
 # ==========================================
 # 绘制图表
 # ==========================================
 fig, ax = plt.subplots(figsize=(9, 5), dpi=120)
-ax.plot(t, hot_pred, 'r-', linewidth=2.5, label=f'Hot water ({hot_init}℃ → {equilibrium_temp:.1f}℃)')
-ax.plot(t, cold_pred, 'b-', linewidth=2.5, label=f'Cold water ({cold_init}℃ → {equilibrium_temp:.1f}℃)')
-ax.axhline(y=equilibrium_temp, color='gray', linestyle='--', linewidth=1, label=f'Equilibrium temp {equilibrium_temp:.1f}℃')
+ax.plot(t, hot_vals, 'r-', linewidth=2.5, label=f'热水 ({hot_init}℃ → 最终 ≈ {hot_vals[-1]:.1f}℃)')
+ax.plot(t, cold_vals, 'b-', linewidth=2.5, label=f'冷水 ({cold_init}℃ → 最终 ≈ {cold_vals[-1]:.1f}℃)')
+ax.axhline(y=room_temp, color='gray', linestyle='--', linewidth=1, label=f'室温 {room_temp:.1f}℃')
 
-ax.set_xlabel('Time (min)', fontsize=12)
-ax.set_ylabel('Temperature (℃)', fontsize=12)
-ax.set_title('Temperature change prediction after mixing', fontsize=14)
+ax.set_xlabel('时间 (分钟)', fontsize=12)
+ax.set_ylabel('温度 (℃)', fontsize=12)
+ax.set_title('热水与冷水温度变化预测（耦合模型）', fontsize=14)
 ax.grid(True, alpha=0.3)
 ax.legend(loc='best')
 ax.set_xlim(0, time_max)
-ax.set_ylim(min(cold_init, equilibrium_temp) - 5, max(hot_init, equilibrium_temp) + 5)
+ax.set_ylim(min(cold_init, room_temp, hot_vals.min()) - 5, max(hot_init, room_temp, hot_vals.max()) + 5)
 
-# 直接展示图表（不提供下载按钮）
 st.pyplot(fig)
 
 # ==========================================
 # 数据表格展示（可选）
 # ==========================================
-if st.checkbox("Show prediction data table"):
-    # 选取部分时间点展示（例如每2分钟）
+if st.checkbox("显示预测数据表格"):
     show_times = np.arange(0, time_max + 0.1, 2)
-    hot_vals = equilibrium_temp + (hot_init - equilibrium_temp) * np.exp(-k * show_times)
-    cold_vals = equilibrium_temp + (cold_init - equilibrium_temp) * np.exp(-k * show_times)
+    # 插值获取对应时刻的温度
+    hot_interp = np.interp(show_times, t, hot_vals)
+    cold_interp = np.interp(show_times, t, cold_vals)
     df = pd.DataFrame({
-        "Time (min)": show_times,
-        "Hot water (℃)": hot_vals,
-        "Cold water (℃)": cold_vals
+        "时间 (分钟)": show_times,
+        "热水温度 (℃)": hot_interp,
+        "冷水温度 (℃)": cold_interp
     })
     st.dataframe(df.style.format("{:.1f}"))
 
 # ==========================================
-# 简单原理说明
+# 原理说明
 # ==========================================
-with st.expander("Prediction model explanation"):
-    st.markdown("""
-    - **Heat balance principle**: Assuming the system is adiabatic and the masses of hot and cold water are equal, the final equilibrium temperature is `(T_hot + T_cold)/2`.
-    - **Temperature change model**: Follows Newton's law of cooling, with temperature exponentially decaying over time:  
-      \\[ T(t) = T_{\\text{eq}} + (T_0 - T_{\\text{eq}}) \\cdot e^{-k \\cdot t} \\]
-    - **Parameter `k`**: Reflects the heat exchange rate. Larger values mean faster temperature change. Can be fitted from experimental data.
-    - This tool provides qualitative predictions; actual curves may be affected by container material, heat loss to the environment, etc.
+with st.expander("预测模型说明"):
+    st.markdown(r"""
+    **物理情景**：热水与冷水接触（例如试管中的冷水浸入热水烧杯），系统与外界环境（室温）存在热交换。  
+    **数学模型**：基于牛顿冷却定律，热水温度 $T_h$ 和冷水温度 $T_c$ 满足：
+    $$
+    \begin{aligned}
+    \frac{dT_h}{dt} &= -k_{hc}(T_h - T_c) - k_{h\text{env}}(T_h - T_{\text{room}}) \\
+    \frac{dT_c}{dt} &=  k_{hc}(T_h - T_c) - k_{c\text{env}}(T_c - T_{\text{room}})
+    \end{aligned}
+    $$
+    - $k_{hc}$：热水与冷水之间的热交换系数  
+    - $k_{h\text{env}}$、$k_{c\text{env}}$：热水、冷水与环境的散热系数  
+    - 最终两者都趋向室温 $T_{\text{room}}$，且相互影响。
+
+    您可以通过侧边栏调节三个系数，观察不同传热速率对温度曲线的影响。
     """)
