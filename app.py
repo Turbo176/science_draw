@@ -101,9 +101,9 @@ if uploaded_files and api_key:
             fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
             
             # 尝试加载中文字体
-            # plt.rcParams['font.sans-serif'] = ['SimHei', 'Noto Sans CJK SC', 'sans-serif']
+            plt.rcParams['font.sans-serif'] = ['SimHei', 'Noto Sans CJK SC', 'sans-serif']
             # plt.rcParams['axes.unicode_minus'] = False
-            plt.rcParams['font.sans-serif'] = ['Noto Sans CJK SC', 'Noto Serif CJK SC', 'AR PL UMing CN', 'WenQuanYi Zen Hei']
+            # plt.rcParams['font.sans-serif'] = ['Noto Sans CJK SC', 'Noto Serif CJK SC', 'AR PL UMing CN', 'WenQuanYi Zen Hei']
             plt.rcParams['axes.unicode_minus'] = False   # 解决负号显示问题
             
             x_time = np.arange(1, 11)
