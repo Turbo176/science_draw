@@ -96,15 +96,12 @@ if uploaded_files and api_key:
                     st.write("热水温度 (1-10min):", item['data']['hot'])
                     st.write("冷水温度 (1-10min):", item['data']['cold'])
 
-            # 综合绘图
+            # 综合绘图 - 全部使用英文标签，避免中文字体问题
             st.header("综合变化趋势图")
             fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
             
-            # 尝试加载中文字体
-            plt.rcParams['font.sans-serif'] = ['SimHei', 'Noto Sans CJK SC', 'sans-serif']
-            # plt.rcParams['axes.unicode_minus'] = False
-            # plt.rcParams['font.sans-serif'] = ['Noto Sans CJK SC', 'Noto Serif CJK SC', 'AR PL UMing CN', 'WenQuanYi Zen Hei']
-            plt.rcParams['axes.unicode_minus'] = False   # 解决负号显示问题
+            # 不再设置中文字体，使用 matplotlib 默认字体（支持英文）
+            # 删除所有 plt.rcParams 中文字体设置行
             
             x_time = np.arange(1, 11)
             hot_list, cold_list = [], []
@@ -118,12 +115,12 @@ if uploaded_files and api_key:
                     ax.plot(x_time, c, color='blue', alpha=0.1)
 
             if hot_list:
-                ax.plot(x_time, np.mean(hot_list, axis=0), color='red', linewidth=3, label='热水(平均)')
-                ax.plot(x_time, np.mean(cold_list, axis=0), color='blue', linewidth=3, label='冷水(平均)')
+                ax.plot(x_time, np.mean(hot_list, axis=0), color='red', linewidth=3, label='Hot Water (Avg)')
+                ax.plot(x_time, np.mean(cold_list, axis=0), color='blue', linewidth=3, label='Cold Water (Avg)')
                 
-            ax.set_title("实验数据汇总分析")
-            ax.set_xlabel("时间 (min)")
-            ax.set_ylabel("温度 (deg C)")
+            ax.set_title("Experimental Data Summary")
+            ax.set_xlabel("Time (min)")
+            ax.set_ylabel("Temperature (°C)")
             ax.set_ylim(0, 110)
             ax.grid(True, alpha=0.3)
             ax.legend()
@@ -135,7 +132,7 @@ if uploaded_files and api_key:
             buf = io.BytesIO()
             fig.savefig(buf, format="png")
             st.download_button(
-                label="下载分析图表",
+                label="Download Chart",
                 data=buf.getvalue(),
                 file_name="summary_chart.png",
                 mime="image/png"
