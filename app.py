@@ -33,21 +33,20 @@ if not api_key:
 # 2. 核心功能函数
 # ==========================================
 def extract_data_with_qwen(uploaded_file, client):
-    """处理上传的图片文件，提取0~10分钟的温度数据"""
+    """处理上传的图片文件"""
     base64_image = base64.b64encode(uploaded_file.getvalue()).decode('utf-8')
     
-    # 【修改点1】提示词要求提取0分钟到10分钟，共11个数据点
+    # 【修改点 1】修改提示词，要求提取 0 到 10 分钟的数据，共 11 个数值
     prompt_text = """
     你是一个专业的数据分析助手。请查看这张图片中的实验记录表。
-    任务：提取 0分钟（初始）、1分钟、2分钟、……、10分钟 的“热水温度”和“冷水温度”数据。
+    任务：提取 0到10分钟 的“热水温度”和“冷水温度”数据。
     注意：
     1. 忽略图片中可能出现的灰色回车符（弯曲箭头）。
     2. 请按常理识别（热水降温，冷水升温）。
-    3. 数据顺序必须从0分钟开始到10分钟结束，一共11个数值。
     请严格按 JSON 格式返回，不要有任何多余文字：
     {
-        "hot": [数值0, 数值1, 数值2, ..., 数值10],
-        "cold": [数值0, 数值1, 数值2, ..., 数值10]
+    "hot": [数值0, 数值1, ...一共11个],
+    "cold": [数值0, 数值1, ...一共11个]
     }
     """
 
@@ -78,7 +77,6 @@ uploaded_files = st.file_uploader("上传实验图片(可多选)", type=['png', 
 if uploaded_files and api_key:
     if st.button("开始批量处理并绘图"):
         client = OpenAI(api_key=api_key, base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
-        
         all_results = []
         progress_bar = st.progress(0)
         
@@ -87,7 +85,7 @@ if uploaded_files and api_key:
             if res:
                 all_results.append({"name": file.name, "data": res})
             progress_bar.progress((index + 1) / len(uploaded_files))
-        
+            
         if all_results:
             st.success(f"处理完成，共成功提取 {len(all_results)} 份数据")
             
@@ -95,7 +93,7 @@ if uploaded_files and api_key:
             st.header("提取到的原始数据")
             for item in all_results:
                 with st.expander(f"数据详情: {item['name']}"):
-                    # 【修改点2】显示0~10分钟
+                    # 【修改点 2】文案从 1-10min 改为 0-10min
                     st.write("热水温度 (0-10min):", item['data']['hot'])
                     st.write("冷水温度 (0-10min):", item['data']['cold'])
 
@@ -103,41 +101,31 @@ if uploaded_files and api_key:
             st.header("综合变化趋势图")
             fig, ax = plt.subplots(figsize=(10, 6), dpi=150)
             
-            # 【修改点3】x轴改为0~10分钟
+            # 【修改点 3】x轴时间范围从 np.arange(1, 11) 改为 np.arange(0, 11)
             x_time = np.arange(0, 11)
             hot_list, cold_list = [], []
 
             for item in all_results:
                 h, c = item['data']['hot'], item['data']['cold']
-                # 兼容性：如果模型返回11个数据则直接使用；如果只有10个（旧版），则补0分钟数据为NaN（不绘制）
+                # 【修改点 4】校验长度从 10 改为 11
                 if len(h) == 11 and len(c) == 11:
                     hot_list.append(h)
                     cold_list.append(c)
                     ax.plot(x_time, h, color='red', alpha=0.1)
                     ax.plot(x_time, c, color='blue', alpha=0.1)
-                elif len(h) == 10 and len(c) == 10:
-                    # 对于旧格式（1-10分钟），显示警告但依然绘制在1-10分钟区间
-                    st.warning(f"{item['name']} 缺少0分钟数据，将只绘制1~10分钟区间。建议重新提取。")
-                    x_old = np.arange(1, 11)
-                    hot_list.append(np.insert(h, 0, np.nan))   # 插入NaN，使长度变为11
-                    cold_list.append(np.insert(c, 0, np.nan))
-                    ax.plot(x_old, h, color='red', alpha=0.1, linestyle='--')
-                    ax.plot(x_old, c, color='blue', alpha=0.1, linestyle='--')
                 else:
-                    st.warning(f"{item['name']} 数据长度异常 ({len(h)}, {len(c)})，跳过绘图")
+                    st.warning(f"文件 {item['name']} 提取的数据长度不符合预期 (需11个数据，热水中提取了{len(h)}个，冷水中提取了{len(c)}个)，已在图表中忽略。")
 
             if hot_list:
-                # 计算平均值时忽略NaN（即缺失的0分钟点）
-                avg_hot = np.nanmean(hot_list, axis=0)
-                avg_cold = np.nanmean(cold_list, axis=0)
-                ax.plot(x_time, avg_hot, color='red', linewidth=3, label='Hot Water (Avg)')
-                ax.plot(x_time, avg_cold, color='blue', linewidth=3, label='Cold Water (Avg)')
+                ax.plot(x_time, np.mean(hot_list, axis=0), color='red', linewidth=3, label='Hot Water (Avg)')
+                ax.plot(x_time, np.mean(cold_list, axis=0), color='blue', linewidth=3, label='Cold Water (Avg)')
                 
-            ax.set_title("Experimental Data Summary (0-10 min)")
+            ax.set_title("Experimental Data Summary")
             ax.set_xlabel("Time (min)")
             ax.set_ylabel("Temperature (°C)")
             ax.set_ylim(0, 110)
-            ax.set_xticks(np.arange(0, 11, 1))   # 显示0到10的刻度
+            # 让 X 轴刻度强制显示为整数（0, 1, 2...10）
+            ax.set_xticks(x_time)
             ax.grid(True, alpha=0.3)
             ax.legend()
             
