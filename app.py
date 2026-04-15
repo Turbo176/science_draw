@@ -124,6 +124,7 @@ if uploaded_files and api_key:
             ax.set_xlabel("Time (min)")
             ax.set_ylabel("Temperature (°C)")
             ax.set_ylim(0, 110)
+            ax.set_xlim(0, 10)
             # 让 X 轴刻度强制显示为整数（0, 1, 2...10）
             ax.set_xticks(x_time)
             ax.grid(True, alpha=0.3)
